@@ -191,7 +191,7 @@ func (c *Client) do(ctx context.Context, op operationType, v interface{}, variab
 //
 // Specification: https://facebook.github.io/graphql/#sec-Errors.
 type errors []struct {
-	Message   []string
+	Message   []interface{}
 	Locations []struct {
 		Line   int
 		Column int
@@ -200,7 +200,11 @@ type errors []struct {
 
 // Error implements error interface.
 func (e errors) Error() string {
-	return strings.Join(e[0].Message, ";")
+	var stringOutput = make([]string, 0)
+	for i := range e[0].Message {
+		stringOutput[i] = fmt.Sprintf("%v", e[0].Message[i])
+	}
+	return strings.Join(stringOutput, ";")
 }
 
 type operationType uint8
