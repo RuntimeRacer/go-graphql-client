@@ -19,7 +19,7 @@ Installation
 `go-graphql-client` requires Go version 1.13 or later.
 
 ```bash
-go get -u github.com/hasura/go-graphql-client
+go get -u github.com/runtimeracer/go-graphql-client
 ```
 
 Usage

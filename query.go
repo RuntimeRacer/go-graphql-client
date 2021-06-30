@@ -3,11 +3,10 @@ package graphql
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/runtimeracer/go-graphql-client/ident"
 	"io"
 	"reflect"
 	"sort"
-
-	"github.com/hasura/go-graphql-client/ident"
 )
 
 func constructQuery(v interface{}, variables map[string]interface{}, name string) string {
