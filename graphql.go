@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/runtimeracer/go-graphql-client/internal/jsonutil"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"strings"
 
 	"golang.org/x/net/context/ctxhttp"
+
+	"github.com/runtimeracer/go-graphql-client/internal/jsonutil"
 )
 
 // Client is a GraphQL client.
@@ -163,12 +165,8 @@ func (c *Client) do(ctx context.Context, op operationType, v interface{}, variab
 		body, _ := ioutil.ReadAll(resp.Body)
 		return fmt.Errorf("non-200 OK status code: %v body: %q", resp.Status, body)
 	}
-	var out struct {
-		Data   *json.RawMessage
-		Errors errors
-		//Extensions interface{} // Unused.
-	}
-	err = json.NewDecoder(resp.Body).Decode(&out)
+	var out graphQLStdOut
+	out, err = c.unmarshalGraphQLResult(resp.Body)
 	if err != nil {
 		// TODO: Consider including response body in returned error, if deemed helpful.
 		return err
@@ -186,12 +184,49 @@ func (c *Client) do(ctx context.Context, op operationType, v interface{}, variab
 	return nil
 }
 
+func (c *Client) unmarshalGraphQLResult(responseBody io.Reader) (graphQLStdOut, error) {
+	// Try unmarshal into default format
+	var output graphQLStdOut
+	err := json.NewDecoder(responseBody).Decode(&output)
+	if err != nil {
+		// TODO: Consider including response body in returned error, if deemed helpful.
+		// TODO: Add Warning message somehow that default is not working
+		var extFormat graphQLExtOut
+		err := json.NewDecoder(responseBody).Decode(&extFormat)
+		if err != nil {
+			// Output too weird or query error
+			return output, err
+		}
+
+		// Convert Ext to default to meet criteria
+		output = graphQLStdOut{
+			Data:       extFormat.Data,
+			Errors:     extFormat.Errors.ConvertToStandard(),
+			Extensions: extFormat.Extensions,
+		}
+	}
+	return output, nil
+}
+
+type graphQLStdOut struct {
+	Data       *json.RawMessage
+	Errors     errors
+	Extensions interface{}
+}
+
+type graphQLExtOut struct {
+	Data       *json.RawMessage
+	Errors     errorsExt
+	Extensions interface{}
+}
+
 // errors represents the "errors" array in a response from a GraphQL server.
 // If returned via error interface, the slice is expected to contain at least 1 element.
 //
 // Specification: https://facebook.github.io/graphql/#sec-Errors.
-type errors []struct {
-	Message   []interface{}
+type errors []errorStruct
+type errorStruct struct {
+	Message   string
 	Locations []struct {
 		Line   int
 		Column int
@@ -200,11 +235,52 @@ type errors []struct {
 
 // Error implements error interface.
 func (e errors) Error() string {
-	var stringOutput = make([]string, 0)
+	if len(e) == 0 {
+		return ""
+	}
+	return e[0].Message
+}
+
+// errorsExt represents the "errors" array in a response from a GraphQL server.
+// If returned via error interface, the slice is expected to contain at least 1 element.
+// The "Ext" variant of this struct is able to handle non-standard implementations of the error message
+type errorsExt []errorsExtStruct
+type errorsExtStruct struct {
+	Message   []interface{}
+	Locations []struct {
+		Line   int
+		Column int
+	}
+}
+
+// Error implements error interface.
+func (e errorsExt) Error() string {
+	if len(e) == 0 {
+		return ""
+	}
+
+	var stringOutput = make([]string, len(e[0].Message))
 	for i := range e[0].Message {
 		stringOutput[i] = fmt.Sprintf("%v", e[0].Message[i])
 	}
 	return strings.Join(stringOutput, ";")
+}
+
+// ConvertToStandard translates extended error structs into structs matching the GraphQL Standard
+func (e errorsExt) ConvertToStandard() errors {
+	if len(e) == 0 {
+		return nil
+	}
+
+	standardError := make(errors, len(e))
+	for i := range e[0].Message {
+		standardError[i] = errorStruct{
+			Message:   fmt.Sprintf("%v", e[0].Message[i]),
+			Locations: e[0].Locations,
+		}
+	}
+
+	return standardError
 }
 
 type operationType uint8
