@@ -187,12 +187,14 @@ func (c *Client) do(ctx context.Context, op operationType, v interface{}, variab
 func (c *Client) unmarshalGraphQLResult(responseBody io.Reader) (graphQLStdOut, error) {
 	// Try unmarshal into default format
 	var output graphQLStdOut
-	err := json.NewDecoder(responseBody).Decode(&output)
+	buf := &bytes.Buffer{}
+	tee := io.TeeReader(responseBody, buf)
+	err := json.NewDecoder(tee).Decode(&output)
 	if err != nil {
 		// TODO: Consider including response body in returned error, if deemed helpful.
 		// TODO: Add Warning message somehow that default is not working
 		var extFormat graphQLExtOut
-		err := json.NewDecoder(responseBody).Decode(&extFormat)
+		err := json.NewDecoder(buf).Decode(&extFormat)
 		if err != nil {
 			// Output too weird or query error
 			return output, err
@@ -238,7 +240,11 @@ func (e errors) Error() string {
 	if len(e) == 0 {
 		return ""
 	}
-	return e[0].Message
+	var stringOutput = make([]string, len(e))
+	for i := range e {
+		stringOutput[i] = fmt.Sprintf("%v", e[i].Message)
+	}
+	return strings.Join(stringOutput, ",")
 }
 
 // errorsExt represents the "errors" array in a response from a GraphQL server.
@@ -263,7 +269,7 @@ func (e errorsExt) Error() string {
 	for i := range e[0].Message {
 		stringOutput[i] = fmt.Sprintf("%v", e[0].Message[i])
 	}
-	return strings.Join(stringOutput, ";")
+	return strings.Join(stringOutput, ",")
 }
 
 // ConvertToStandard translates extended error structs into structs matching the GraphQL Standard
@@ -272,7 +278,7 @@ func (e errorsExt) ConvertToStandard() errors {
 		return nil
 	}
 
-	standardError := make(errors, len(e))
+	standardError := make(errors, len(e[0].Message))
 	for i := range e[0].Message {
 		standardError[i] = errorStruct{
 			Message:   fmt.Sprintf("%v", e[0].Message[i]),
