@@ -33,6 +33,9 @@ type (
 	// This type is most often used by GraphQL to represent free-form
 	// human-readable text.
 	String string
+
+	// Token represents a Token string
+	Token string
 )
 
 // NewBoolean is a helper to make a new *Boolean.
@@ -49,3 +52,6 @@ func NewInt(v Int) *Int { return &v }
 
 // NewString is a helper to make a new *String.
 func NewString(v String) *String { return &v }
+
+// NewToken is a helper to make a new *String.
+func NewToken(v Token) *Token { return &v }
